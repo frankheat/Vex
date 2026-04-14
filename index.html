@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vex</title>
+  <link rel="icon" href="favicon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f172a;
+      --surface:   #1e293b;
+      --surface-2: #273449;
+      --border:    #334155;
+      --text:      #f1f5f9;
+      --muted:     #94a3b8;
+      --accent:    #3b82f6;
+      --radius:    8px;
+    }
+
+    [hidden] { display: none !important; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .app { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; }
+
+    /* ── Header ── */
+    header { padding: 24px 0 0; margin-bottom: 28px; }
+    header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 12px; }
+
+    .api-key-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .api-key-bar label { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    #api-key-input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 12px;
+      padding: 5px 10px;
+      outline: none;
+      width: 240px;
+      transition: border-color 0.15s;
+    }
+    #api-key-input:focus { border-color: var(--accent); }
+    #api-key-input::placeholder { color: var(--muted); }
+    #api-key-save {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 12px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    #api-key-save:hover { border-color: var(--accent); }
+    #api-key-clear { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 5px 4px; }
+    #api-key-clear:hover { color: #f87171; }
+    .api-key-hint { font-size: 11px; color: var(--muted); }
+    .api-key-hint a { color: var(--accent); text-decoration: none; }
+    .api-key-hint a:hover { text-decoration: underline; }
+    #api-key-status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    #api-key-status.set   { background: rgba(34,197,94,0.1);  color: #4ade80; }
+    #api-key-status.unset { background: rgba(100,116,139,0.1); color: var(--muted); }
+
+    /* ── Search bar ── */
+    .search-row {
+      display: flex;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0 14px;
+      gap: 10px;
+      transition: border-color 0.15s;
+    }
+    .search-row:focus-within { border-color: var(--accent); }
+    .search-icon { color: var(--muted); flex-shrink: 0; }
+    #search-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 15px;
+      padding: 13px 0;
+      min-width: 0;
+    }
+    #search-input::placeholder { color: var(--muted); }
+    #clear-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 4px 6px;
+      font-size: 16px;
+      line-height: 1;
+    }
+    #clear-btn:hover { color: var(--text); }
+
+    /* ── Filter chips ── */
+    .chips { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 20px;
+      padding: 3px 13px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--text); }
+    .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* ── 3-column selector ── */
+    #selector { margin-top: 20px; }
+    .columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--border);
+      gap: 1px;
+    }
+    .col { background: var(--surface); display: flex; flex-direction: column; }
+    .col-header {
+      background: var(--bg);
+      padding: 9px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .col-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+    .col-n { font-size: 11px; color: var(--muted); background: var(--surface); border-radius: 10px; padding: 1px 8px; }
+    .col-body { overflow-y: auto; height: 320px; }
+    .col-body::-webkit-scrollbar { width: 4px; }
+    .col-body::-webkit-scrollbar-track { background: transparent; }
+    .col-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .col-placeholder { padding: 32px 14px; color: var(--muted); font-size: 13px; text-align: center; }
+    .col-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      border-left: 2px solid transparent;
+      transition: background 0.1s;
+      user-select: none;
+    }
+    .col-item:last-child { border-bottom: none; }
+    .col-item:hover { background: var(--surface-2); }
+    .col-item.selected { background: rgba(59,130,246,0.1); border-left-color: var(--accent); }
+    .col-item.selected .item-name { color: var(--accent); font-weight: 600; }
+    .col-item.selected .item-n { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .item-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-n { flex-shrink: 0; font-size: 11px; background: var(--surface-2); color: var(--muted); border-radius: 10px; padding: 1px 8px; min-width: 24px; text-align: center; }
+    .ver-name { font-family: monospace; font-size: 12px; }
+    .dep-tag { font-size: 10px; color: var(--muted); background: rgba(100,116,139,0.15); border-radius: 3px; padding: 1px 5px; flex-shrink: 0; }
+    .ver-arrow { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+    .col-item:hover .ver-arrow, .col-item.selected .ver-arrow { color: var(--accent); }
+    .col-loading { padding: 32px 14px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    /* ── Severity badges ── */
+    .badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.3px; border-radius: 4px; padding: 2px 7px; }
+    .badge-CRITICAL { background: rgba(239,68,68,0.15);   color: #f87171; }
+    .badge-HIGH     { background: rgba(249,115,22,0.15);  color: #fb923c; }
+    .badge-MEDIUM   { background: rgba(234,179,8,0.15);   color: #fbbf24; }
+    .badge-LOW      { background: rgba(34,197,94,0.15);   color: #4ade80; }
+    .badge-NONE     { background: rgba(100,116,139,0.15); color: #94a3b8; }
+    .badge-NA       { background: rgba(100,116,139,0.1);  color: #64748b; }
+
+    /* ── CVE section ── */
+    #cve-section { margin-top: 28px; }
+    .cpe-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .cpe-bar .lbl { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+    .cpe-bar code { font-family: monospace; font-size: 12px; word-break: break-all; }
+    .cve-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+    .cve-header h2 { font-size: 15px; font-weight: 600; }
+    .cve-header .cnt { color: var(--muted); font-size: 13px; }
+    .sev-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .stat-pill { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; font-size: 12px; }
+    .stat-pill strong { font-weight: 700; }
+    .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { background: var(--surface); padding: 9px 14px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); border-bottom: 1px solid var(--border); }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody td { padding: 10px 14px; vertical-align: top; }
+    tr.cve-row { cursor: pointer; }
+    tr.cve-row:hover { background: var(--surface-2); }
+    .cve-id { font-weight: 600; font-family: monospace; font-size: 13px; }
+    .desc-prev { color: var(--muted); font-size: 12px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    tr.cve-detail { display: none; }
+    tr.cve-detail.open { display: table-row; }
+    tr.cve-detail td { background: var(--surface); padding: 16px 20px; cursor: default; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; margin-bottom: 16px; }
+    .dl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+    .dv { font-size: 13px; }
+    .dv.mono { font-family: monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
+    .detail-desc { font-size: 13px; line-height: 1.75; }
+    .nvd-link { display: inline-block; margin-top: 12px; color: var(--accent); text-decoration: none; font-size: 13px; }
+    .nvd-link:hover { text-decoration: underline; }
+
+    /* ── Spinner ── */
+    .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .state-row td { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    /* ── Toast ── */
+    #toast { position: fixed; bottom: 24px; right: 24px; background: #7f1d1d; color: #fecaca; border: 1px solid #991b1b; border-radius: var(--radius); padding: 12px 18px; font-size: 13px; max-width: 380px; z-index: 200; display: none; }
+    #toast.show { display: block; }
+
+    /* ── Hint ── */
+    .hint { color: var(--muted); font-size: 13px; margin-top: 52px; text-align: center; line-height: 2.2; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Vex</h1>
+    <div class="api-key-bar">
+      <label for="api-key-input">NVD API key</label>
+      <input id="api-key-input" type="password" placeholder="Optional — higher rate limits" autocomplete="off" />
+      <button id="api-key-save">Save</button>
+      <button id="api-key-clear" hidden>Remove</button>
+      <span id="api-key-status"></span>
+      <span class="api-key-hint">
+        <a href="https://nvd.nist.gov/developers/start-here" target="_blank" rel="noopener">Rate limits ↗</a>
+        &nbsp;·&nbsp;
+        <a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener">Get a free key ↗</a>
+      </span>
+    </div>
+  </header>
+
+  <div class="search-row">
+    <svg class="search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <input id="search-input" type="text"
+      placeholder="Search vendor or product… (e.g. apache, log4j, microsoft windows)"
+      autocomplete="off" spellcheck="false" />
+    <button id="clear-btn" hidden title="Clear">✕</button>
+  </div>
+
+  <div class="chips">
+    <button class="chip active" data-part="all">All</button>
+    <button class="chip" data-part="a">Applications</button>
+    <button class="chip" data-part="o">OS</button>
+    <button class="chip" data-part="h">Hardware</button>
+  </div>
+
+  <div id="selector" hidden>
+    <div class="columns">
+      <div class="col">
+        <div class="col-header">
+          <span class="col-label">Vendor</span>
+          <span class="col-n" id="vendor-n"></span>
+        </div>
+        <div class="col-body" id="vendor-list">
+          <div class="col-placeholder">Type in the search bar</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="col-header">
+          <span class="col-label">Product</span>
+          <span class="col-n" id="product-n"></span>
+        </div>
+        <div class="col-body" id="product-list">
+          <div class="col-placeholder">← Select a vendor</div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="col-header">
+          <span class="col-label">Version / CPE</span>
+          <span class="col-n" id="version-n"></span>
+        </div>
+        <div class="col-body" id="version-list">
+          <div class="col-placeholder">← Select a product</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="cve-section" hidden>
+    <div class="cpe-bar">
+      <span class="lbl">Selected CPE</span>
+      <code id="cpe-label"></code>
+      <a id="nvd-link" href="#" target="_blank" rel="noopener"
+         style="margin-left:auto;flex-shrink:0;color:var(--accent);font-size:12px;text-decoration:none;white-space:nowrap;">
+        ↗ Verify on NVD
+      </a>
+    </div>
+    <div class="cve-header">
+      <h2>Associated vulnerabilities</h2>
+      <span class="cnt" id="cve-cnt"></span>
+    </div>
+    <div id="sev-stats" class="sev-stats"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>CVE ID &amp; description</th>
+            <th>Severity</th>
+            <th>Score</th>
+            <th>CVSS</th>
+            <th>Published</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="cve-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">
+    Type at least 2 characters to search · select vendor → product → version to view CVEs
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const NVD_BASE    = 'https://services.nvd.nist.gov/rest/json';
+const API_LIMIT   = 500;
+const DEBOUNCE_MS = 380;
+const CACHE_TTL   = 300_000; // ms
+
+// ── Cache (sessionStorage + TTL) ─────────────────────────────────────────────
+const cache = {
+  get(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return null;
+      const { ts, data } = JSON.parse(raw);
+      if (Date.now() - ts > CACHE_TTL) { sessionStorage.removeItem(key); return null; }
+      return data;
+    } catch { return null; }
+  },
+  set(key, data) {
+    try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+  },
+};
+
+// ── API key ───────────────────────────────────────────────────────────────────
+const apiKey = {
+  get: ()  => localStorage.getItem('nvd_api_key') || '',
+  set: (k) => k ? localStorage.setItem('nvd_api_key', k) : localStorage.removeItem('nvd_api_key'),
+};
+
+// ── NVD API ───────────────────────────────────────────────────────────────────
+async function nvdFetch(path, params) {
+  const url = new URL(`${NVD_BASE}${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+
+  const cacheKey = url.toString();
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const headers = {};
+  const key = apiKey.get();
+  if (key) headers['apiKey'] = key;
+
+  const res = await fetch(url, { headers });
+  if (res.status === 403) throw new Error('Invalid API key or rate limit exceeded.');
+  if (res.status === 429) throw new Error('Rate limited — add an NVD API key for higher limits (5 req/30 s without key).');
+  if (!res.ok) throw new Error(`NVD API error: HTTP ${res.status}`);
+
+  const data = await res.json();
+  cache.set(cacheKey, data);
+  return data;
+}
+
+const fetchCpes = (q)       => nvdFetch('/cpes/2.0', { keywordSearch: q, resultsPerPage: API_LIMIT });
+const fetchCves = (cpeName) => nvdFetch('/cves/2.0', { cpeName, resultsPerPage: 2000 });
+
+// ── Parsing ───────────────────────────────────────────────────────────────────
+function parseCpeName(cpeName) {
+  const parts = cpeName.split(':');
+  const field = i => { const v = parts[i] ?? '*'; return (v === '' || v === '-') ? '*' : v; };
+  return { part: field(2), vendor: field(3), product: field(4), version: field(5), update: field(6) };
+}
+
+function englishValue(items, key = 'value') {
+  return (items.find(i => i.lang === 'en') ?? items[0] ?? {})[key] ?? '';
+}
+
+function bestCvss(metrics) {
+  for (const [key, version] of [['cvssMetricV31','3.1'], ['cvssMetricV30','3.0'], ['cvssMetricV2','2.0']]) {
+    const entries = metrics[key];
+    if (!entries?.length) continue;
+    const data = entries[0].cvssData ?? {};
+    const severity = (data.baseSeverity ?? entries[0].baseSeverity ?? 'UNKNOWN').toUpperCase();
+    return { version, score: data.baseScore ?? 0, severity, vector: data.vectorString ?? '' };
+  }
+  return null;
+}
+
+function parseCpes(raw) {
+  return (raw.products ?? []).flatMap(({ cpe = {} }) => {
+    const cpeName = cpe.cpeName ?? '';
+    if (!cpeName) return [];
+    return [{ cpeName, title: englishValue(cpe.titles ?? [], 'title') || cpeName,
+              deprecated: cpe.deprecated ?? false, ...parseCpeName(cpeName) }];
+  });
+}
+
+function parseCves(raw) {
+  return (raw.vulnerabilities ?? []).flatMap(({ cve = {} }) => {
+    if (!cve.id) return [];
+    return [{ id: cve.id, description: englishValue(cve.descriptions ?? []),
+              published: (cve.published ?? '').slice(0, 10),
+              lastModified: (cve.lastModified ?? '').slice(0, 10),
+              status: cve.vulnStatus ?? '', cvss: bestCvss(cve.metrics ?? {}),
+              url: `https://nvd.nist.gov/vuln/detail/${cve.id}` }];
+  });
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+const S = {
+  part: 'all', allCpes: [], filtered: [],
+  selectedVendor: null, selectedProduct: null, selectedCpe: null,
+};
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+const searchInput  = $('search-input');
+const clearBtn     = $('clear-btn');
+const selectorEl   = $('selector');
+const cveSectionEl = $('cve-section');
+const hintEl       = $('hint');
+const toastEl      = $('toast');
+const vendorList   = $('vendor-list');
+const productList  = $('product-list');
+const versionList  = $('version-list');
+const vendorN      = $('vendor-n');
+const productN     = $('product-n');
+const versionN     = $('version-n');
+const cpeLbl       = $('cpe-label');
+const nvdLink      = $('nvd-link');
+const cveCnt       = $('cve-cnt');
+const sevStats     = $('sev-stats');
+const cveTbody     = $('cve-tbody');
+const apiKeyInput  = $('api-key-input');
+const apiKeyStatus = $('api-key-status');
+const apiKeyClear  = $('api-key-clear');
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+let toastTimer;
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 5000);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function badge(severity) {
+  const s = severity ?? 'NA';
+  return `<span class="badge badge-${s}">${s}</span>`;
+}
+
+// ── Data helpers ──────────────────────────────────────────────────────────────
+function cpeUpdateField(cpeName) {
+  const v = (cpeName || '').split(':')[6] || '*';
+  return v === '-' ? '*' : v;
+}
+
+function versionLabel(cpe) {
+  const ver = cpe.version !== '*' ? cpe.version : '';
+  const upd = cpeUpdateField(cpe.cpeName);
+  if (ver && upd !== '*') return `${ver} ${upd}`;
+  if (ver)                return ver;
+  if (upd !== '*')        return upd;
+  return '—';
+}
+
+function sortVersions(cpes) {
+  const parseVer = v => v.split('.').map(x => { const n = parseInt(x); return isNaN(n) ? x : n; });
+  return [...cpes].sort((a, b) => {
+    const pa = parseVer(a.version || '0');
+    const pb = parseVer(b.version || '0');
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const x = pa[i] ?? -Infinity, y = pb[i] ?? -Infinity;
+      if (x === y) continue;
+      if (typeof x === typeof y) return y > x ? 1 : -1;
+      return typeof y === 'number' ? 1 : -1;
+    }
+    return cpeUpdateField(b.cpeName).localeCompare(cpeUpdateField(a.cpeName));
+  });
+}
+
+function getVendors(cpes) {
+  const map = new Map();
+  for (const c of cpes) {
+    if (!map.has(c.vendor)) map.set(c.vendor, new Set());
+    map.get(c.vendor).add(c.product);
+  }
+  return [...map.entries()]
+    .map(([vendor, products]) => ({ vendor, productCount: products.size }))
+    .sort((a, b) => a.vendor.localeCompare(b.vendor));
+}
+
+function getProducts(cpes, vendor) {
+  const map = new Map();
+  for (const c of cpes) {
+    if (c.vendor === vendor) map.set(c.product, (map.get(c.product) || 0) + 1);
+  }
+  return [...map.entries()]
+    .map(([product, count]) => ({ product, count }))
+    .sort((a, b) => a.product.localeCompare(b.product));
+}
+
+function getVersions(cpes, vendor, product) {
+  return sortVersions(cpes.filter(c => c.vendor === vendor && c.product === product));
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderColumn(listEl, countEl, items, rowHtml, emptyMsg) {
+  countEl.textContent = items.length || '';
+  listEl.innerHTML = items.length
+    ? items.map(rowHtml).join('')
+    : `<div class="col-placeholder">${emptyMsg}</div>`;
+  listEl.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
+}
+
+function renderVendors() {
+  renderColumn(vendorList, vendorN, getVendors(S.filtered),
+    v => `<div class="col-item${S.selectedVendor === v.vendor ? ' selected' : ''}" data-v="${esc(v.vendor)}">
+            <span class="item-name">${esc(v.vendor)}</span>
+            <span class="item-n">${v.productCount}</span>
+          </div>`,
+    'No results found');
+}
+
+function renderProducts() {
+  if (!S.selectedVendor) {
+    productList.innerHTML = '<div class="col-placeholder">← Select a vendor</div>';
+    productN.textContent = '';
+    return;
+  }
+  renderColumn(productList, productN, getProducts(S.filtered, S.selectedVendor),
+    p => `<div class="col-item${S.selectedProduct === p.product ? ' selected' : ''}" data-p="${esc(p.product)}">
+            <span class="item-name">${esc(p.product)}</span>
+            <span class="item-n">${p.count}</span>
+          </div>`,
+    'No products found');
+}
+
+function renderVersions() {
+  if (!S.selectedVendor || !S.selectedProduct) {
+    versionList.innerHTML = '<div class="col-placeholder">← Select a product</div>';
+    versionN.textContent = '';
+    return;
+  }
+  renderColumn(versionList, versionN, getVersions(S.filtered, S.selectedVendor, S.selectedProduct),
+    c => `<div class="col-item${S.selectedCpe?.cpeName === c.cpeName ? ' selected' : ''}" data-cpe="${esc(c.cpeName)}">
+            <span class="item-name ver-name">${esc(versionLabel(c))}</span>
+            ${c.deprecated ? '<span class="dep-tag">deprecated</span>' : ''}
+            <span class="ver-arrow">→</span>
+          </div>`,
+    'No versions found');
+}
+
+function renderCves(cves, total) {
+  cveCnt.textContent = total !== cves.length ? `${total} (showing ${cves.length})` : String(total);
+
+  const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, NONE: 0 };
+  for (const c of cves) { const s = c.cvss?.severity; if (s in counts) counts[s]++; }
+  sevStats.innerHTML = Object.entries(counts)
+    .filter(([, n]) => n > 0)
+    .map(([s, n]) => `<div class="stat-pill">${badge(s)}<strong>${n}</strong></div>`)
+    .join('');
+
+  if (!cves.length) {
+    cveTbody.innerHTML = '<tr class="state-row"><td colspan="6">No CVEs found for this CPE.</td></tr>';
+    return;
+  }
+
+  const sorted = [...cves].sort((a, b) => (b.cvss?.score ?? 0) - (a.cvss?.score ?? 0));
+  cveTbody.innerHTML = sorted.map((c, i) => {
+    const sev   = c.cvss?.severity ?? 'NA';
+    const score = c.cvss ? c.cvss.score.toFixed(1) : '—';
+    const ver   = c.cvss ? `v${c.cvss.version}` : '—';
+    const prev  = c.description.length > 130 ? c.description.slice(0, 130) + '…' : c.description;
+    const cvssDetail = c.cvss ? `
+      <div><div class="dl">CVSS Score</div><div class="dv">${badge(c.cvss.severity)} <strong>${c.cvss.score.toFixed(1)}</strong> (v${c.cvss.version})</div></div>
+      <div><div class="dl">CVSS Vector</div><div class="dv mono">${esc(c.cvss.vector)}</div></div>` : '';
+    return `
+      <tr class="cve-row" data-i="${i}">
+        <td><div class="cve-id">${esc(c.id)}</div><div class="desc-prev">${esc(prev)}</div></td>
+        <td>${badge(sev)}</td>
+        <td style="font-weight:600;font-variant-numeric:tabular-nums">${score}</td>
+        <td style="color:var(--muted);font-size:12px">${ver}</td>
+        <td style="color:var(--muted)">${esc(c.published)}</td>
+        <td style="color:var(--muted);font-size:12px">${esc(c.status)}</td>
+      </tr>
+      <tr class="cve-detail" data-for="${i}">
+        <td colspan="6">
+          <div class="detail-grid">
+            <div><div class="dl">CVE ID</div><div class="dv mono">${esc(c.id)}</div></div>
+            <div><div class="dl">Status</div><div class="dv">${esc(c.status)}</div></div>
+            <div><div class="dl">Published</div><div class="dv">${esc(c.published)}</div></div>
+            <div><div class="dl">Last modified</div><div class="dv">${esc(c.lastModified)}</div></div>
+            ${cvssDetail}
+          </div>
+          <div class="dl">Description</div>
+          <div class="detail-desc">${esc(c.description)}</div>
+          <a class="nvd-link" href="${esc(c.url)}" target="_blank" rel="noopener">↗ Open on NIST NVD</a>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function renderApiKeyStatus() {
+  const set = !!apiKey.get();
+  apiKeyStatus.textContent = set ? 'Key set' : 'No key';
+  apiKeyStatus.className = set ? 'set' : 'unset';
+  apiKeyClear.hidden = !set;
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+function applyFilter() {
+  S.filtered = S.part === 'all' ? S.allCpes : S.allCpes.filter(c => c.part === S.part);
+  S.selectedVendor = null; S.selectedProduct = null; S.selectedCpe = null;
+  cveSectionEl.hidden = true;
+  autoAdvance();
+}
+
+function selectVendor(vendor) {
+  S.selectedVendor = vendor; S.selectedProduct = null; S.selectedCpe = null;
+  cveSectionEl.hidden = true;
+  renderVendors(); renderProducts(); renderVersions();
+}
+
+function selectProduct(product) {
+  S.selectedProduct = product; S.selectedCpe = null;
+  cveSectionEl.hidden = true;
+  renderProducts(); renderVersions();
+}
+
+function selectVersion(cpe) {
+  S.selectedCpe = cpe;
+  renderVersions();
+  loadCves(cpe.cpeName);
+}
+
+function autoAdvance() {
+  const vendors = getVendors(S.filtered);
+  if (vendors.length !== 1) { renderVendors(); renderProducts(); renderVersions(); return; }
+  S.selectedVendor = vendors[0].vendor;
+  renderVendors();
+  const products = getProducts(S.filtered, S.selectedVendor);
+  if (products.length !== 1) { renderProducts(); renderVersions(); return; }
+  S.selectedProduct = products[0].product;
+  renderProducts(); renderVersions();
+}
+
+let searchSeq = 0;
+
+async function doSearch(q) {
+  if (q.length < 2) {
+    S.allCpes = []; S.filtered = [];
+    vendorList.innerHTML = '<div class="col-placeholder">Type at least 2 characters</div>';
+    vendorN.textContent = '';
+    return;
+  }
+
+  const id = ++searchSeq;
+  selectorEl.hidden = false; hintEl.hidden = true;
+  vendorList.innerHTML = '<div class="col-loading"><span class="spinner"></span>Searching…</div>';
+  vendorN.textContent = '';
+  S.selectedVendor = null; S.selectedProduct = null; S.selectedCpe = null;
+  productList.innerHTML = '<div class="col-placeholder">← Select a vendor</div>';
+  versionList.innerHTML = '<div class="col-placeholder">← Select a product</div>';
+  productN.textContent = ''; versionN.textContent = '';
+  cveSectionEl.hidden = true;
+
+  try {
+    const raw = await fetchCpes(q);
+    if (id !== searchSeq) return;
+    S.allCpes  = parseCpes(raw);
+    S.filtered = S.part === 'all' ? S.allCpes : S.allCpes.filter(c => c.part === S.part);
+    autoAdvance();
+  } catch (e) {
+    if (id !== searchSeq) return;
+    vendorList.innerHTML = '<div class="col-placeholder">No results found</div>';
+    showToast(e.message);
+  }
+}
+
+async function loadCves(cpeName) {
+  cveSectionEl.hidden = false;
+  cpeLbl.textContent  = cpeName;
+  nvdLink.href = `https://nvd.nist.gov/vuln/search#/nvd/home?cpeFilterMode=cpe&cpeName=${encodeURIComponent(cpeName)}`;
+  cveCnt.textContent = ''; sevStats.innerHTML = '';
+  cveTbody.innerHTML = '<tr class="state-row"><td colspan="6"><span class="spinner"></span>Loading CVEs…</td></tr>';
+  cveSectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  try {
+    const raw = await fetchCves(cpeName);
+    renderCves(parseCves(raw), raw.totalResults ?? 0);
+  } catch (e) {
+    cveTbody.innerHTML = '';
+    showToast(e.message);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+function init() {
+  // API key
+  renderApiKeyStatus();
+  $('api-key-save').addEventListener('click', () => {
+    apiKey.set(apiKeyInput.value.trim());
+    apiKeyInput.value = '';
+    renderApiKeyStatus();
+  });
+  $('api-key-clear').addEventListener('click', () => {
+    apiKey.set('');
+    renderApiKeyStatus();
+  });
+
+  // Search
+  const debouncedSearch = debounce(doSearch, DEBOUNCE_MS);
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim();
+    clearBtn.hidden = !q;
+    debouncedSearch(q);
+  });
+
+  clearBtn.addEventListener('click', () => {
+    searchInput.value = ''; clearBtn.hidden = true;
+    selectorEl.hidden = true; cveSectionEl.hidden = true; hintEl.hidden = false;
+    Object.assign(S, { allCpes: [], filtered: [], selectedVendor: null, selectedProduct: null, selectedCpe: null });
+    searchInput.focus();
+  });
+
+  // Column clicks (delegated)
+  vendorList.addEventListener('click',  e => { const el = e.target.closest('.col-item'); if (el) selectVendor(el.dataset.v); });
+  productList.addEventListener('click', e => { const el = e.target.closest('.col-item'); if (el) selectProduct(el.dataset.p); });
+  versionList.addEventListener('click', e => {
+    const el = e.target.closest('.col-item');
+    if (!el) return;
+    const cpe = S.filtered.find(c => c.cpeName === el.dataset.cpe);
+    if (cpe) selectVersion(cpe);
+  });
+
+  // CVE row expand
+  cveTbody.addEventListener('click', e => {
+    const row = e.target.closest('.cve-row');
+    if (!row) return;
+    const det  = cveTbody.querySelector(`.cve-detail[data-for="${row.dataset.i}"]`);
+    const open = det.classList.contains('open');
+    cveTbody.querySelectorAll('.cve-detail.open').forEach(r => r.classList.remove('open'));
+    if (!open) det.classList.add('open');
+  });
+
+  // Part filter chips
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      S.part = chip.dataset.part;
+      if (S.allCpes.length) applyFilter();
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>
