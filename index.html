@@ -42,6 +42,7 @@
       gap: 8px;
       flex-wrap: wrap;
     }
+    .api-key-bar + .api-key-bar { margin-top: 8px; }
     .api-key-bar label { font-size: 12px; color: var(--muted); flex-shrink: 0; }
     #api-key-input {
       background: var(--surface);
@@ -69,6 +70,9 @@
     #api-key-save:hover { border-color: var(--accent); }
     #api-key-clear { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 5px 4px; }
     #api-key-clear:hover { color: #f87171; }
+    #limit-input { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 12px; padding: 5px 10px; outline: none; width: 56px; transition: border-color 0.15s; -moz-appearance: textfield; }
+    #limit-input:focus { border-color: var(--accent); }
+    #limit-input::-webkit-outer-spin-button, #limit-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .api-key-hint { font-size: 11px; color: var(--muted); }
     .api-key-hint a { color: var(--accent); text-decoration: none; }
     .api-key-hint a:hover { text-decoration: underline; }
@@ -262,6 +266,11 @@
         <a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener">Get a free key ↗</a>
       </span>
     </div>
+    <div class="api-key-bar">
+      <label for="limit-input">Max results</label>
+      <input id="limit-input" type="number" min="100" max="10000" step="100" />
+      <span class="api-key-hint">If results seem incomplete, try a higher value.</span>
+    </div>
   </header>
 
   <div class="search-row">
@@ -354,9 +363,9 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const NVD_BASE    = 'https://services.nvd.nist.gov/rest/json';
-const API_LIMIT   = 500;
-const DEBOUNCE_MS = 380;
+const NVD_BASE      = 'https://services.nvd.nist.gov/rest/json';
+const DEFAULT_LIMIT = 1000;
+const DEBOUNCE_MS   = 380;
 const CACHE_TTL   = 300_000; // ms
 
 // ── Cache (sessionStorage + TTL) ─────────────────────────────────────────────
@@ -379,6 +388,12 @@ const cache = {
 const apiKey = {
   get: ()  => localStorage.getItem('nvd_api_key') || '',
   set: (k) => k ? localStorage.setItem('nvd_api_key', k) : localStorage.removeItem('nvd_api_key'),
+};
+
+// ── Result limit ──────────────────────────────────────────────────────────────
+const resultLimit = {
+  get: ()  => parseInt(localStorage.getItem('nvd_limit') || DEFAULT_LIMIT, 10),
+  set: (v) => localStorage.setItem('nvd_limit', v),
 };
 
 // ── NVD API ───────────────────────────────────────────────────────────────────
@@ -404,7 +419,7 @@ async function nvdFetch(path, params) {
   return data;
 }
 
-const fetchCpes = (q)       => nvdFetch('/cpes/2.0', { keywordSearch: q, resultsPerPage: API_LIMIT });
+const fetchCpes = (q)       => nvdFetch('/cpes/2.0', { keywordSearch: q, resultsPerPage: resultLimit.get() });
 const fetchCves = (cpeName) => nvdFetch('/cves/2.0', { cpeName, resultsPerPage: 2000 });
 
 // ── Parsing ───────────────────────────────────────────────────────────────────
@@ -478,6 +493,7 @@ const cveTbody     = $('cve-tbody');
 const apiKeyInput  = $('api-key-input');
 const apiKeyStatus = $('api-key-status');
 const apiKeyClear  = $('api-key-clear');
+const limitInput   = $('limit-input');
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function debounce(fn, ms) {
@@ -752,6 +768,14 @@ async function loadCves(cpeName) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 function init() {
+  // Result limit
+  limitInput.value = resultLimit.get();
+  limitInput.addEventListener('change', () => {
+    const v = Math.min(10000, Math.max(100, parseInt(limitInput.value) || DEFAULT_LIMIT));
+    limitInput.value = v;
+    resultLimit.set(v);
+  });
+
   // API key
   renderApiKeyStatus();
   $('api-key-save').addEventListener('click', () => {
