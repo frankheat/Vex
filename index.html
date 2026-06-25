@@ -243,8 +243,11 @@
     .state-row td { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
 
     /* ── Toast ── */
-    #toast { position: fixed; bottom: 24px; right: 24px; background: #7f1d1d; color: #fecaca; border: 1px solid #991b1b; border-radius: var(--radius); padding: 12px 18px; font-size: 13px; max-width: 380px; z-index: 200; display: none; }
-    #toast.show { display: block; }
+    #toast { position: fixed; bottom: 24px; right: 24px; background: #7f1d1d; color: #fecaca; border: 1px solid #991b1b; border-radius: var(--radius); padding: 12px 18px; font-size: 13px; max-width: 380px; z-index: 200; display: none; align-items: flex-start; gap: 10px; }
+    #toast.show { display: flex; }
+    #toast-msg { flex: 1; }
+    #toast-close { background: none; border: none; color: #fecaca; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; flex-shrink: 0; opacity: 0.7; }
+    #toast-close:hover { opacity: 1; }
 
     /* ── Hint ── */
     .hint { color: var(--muted); font-size: 13px; margin-top: 52px; text-align: center; line-height: 2.2; }
@@ -359,7 +362,10 @@
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toast">
+  <span id="toast-msg"></span>
+  <button id="toast-close" title="Close">✕</button>
+</div>
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -397,6 +403,12 @@ const resultLimit = {
 };
 
 // ── NVD API ───────────────────────────────────────────────────────────────────
+const FETCH_TIMEOUT_MS    = 12_000;
+const MAX_RETRIES         = 1; // extra attempts after the first
+const RETRY_BASE_DELAY_MS = 1000;
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 async function nvdFetch(path, params) {
   const url = new URL(`${NVD_BASE}${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
@@ -409,14 +421,30 @@ async function nvdFetch(path, params) {
   const key = apiKey.get();
   if (key) headers['apiKey'] = key;
 
-  const res = await fetch(url, { headers });
-  if (res.status === 403) throw new Error('Invalid API key or rate limit exceeded.');
-  if (res.status === 429) throw new Error('Rate limited — add an NVD API key for higher limits (5 req/30 s without key).');
-  if (!res.ok) throw new Error(`NVD API error: HTTP ${res.status}`);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
-  const data = await res.json();
-  cache.set(cacheKey, data);
-  return data;
+      if (res.status === 403) throw new Error('Invalid API key or rate limit exceeded.');
+      if (res.status === 429) throw new Error('Rate limited — add an NVD API key for higher limits (5 req/30 s without key).');
+      if (res.status >= 500) {
+        const err = new Error(`NVD is temporarily unavailable (HTTP ${res.status}).`);
+        err.retryable = true;
+        throw err;
+      }
+      if (!res.ok) throw new Error(`NVD API error: HTTP ${res.status}`);
+
+      const data = await res.json();
+      cache.set(cacheKey, data);
+      return data;
+    } catch (e) {
+      const retryable = e.name === 'TimeoutError' || e.name === 'TypeError' || e.retryable;
+      if (retryable && attempt < MAX_RETRIES) { await sleep(RETRY_BASE_DELAY_MS * 2 ** attempt); continue; }
+      if (e.name === 'TimeoutError') throw new Error('NVD did not respond in time — try again in a moment.');
+      if (e.name === 'TypeError')   throw new Error('Unable to reach NVD — check your internet connection.');
+      throw e;
+    }
+  }
 }
 
 const fetchCpes = (q)       => nvdFetch('/cpes/2.0', { keywordSearch: q, resultsPerPage: resultLimit.get() });
@@ -479,6 +507,8 @@ const selectorEl   = $('selector');
 const cveSectionEl = $('cve-section');
 const hintEl       = $('hint');
 const toastEl      = $('toast');
+const toastMsg     = $('toast-msg');
+const toastClose   = $('toast-close');
 const vendorList   = $('vendor-list');
 const productList  = $('product-list');
 const versionList  = $('version-list');
@@ -503,10 +533,10 @@ function debounce(fn, ms) {
 
 let toastTimer;
 function showToast(msg) {
-  toastEl.textContent = msg;
+  toastMsg.textContent = msg;
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 5000);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 10000);
 }
 
 function esc(s) {
@@ -786,6 +816,12 @@ function init() {
   $('api-key-clear').addEventListener('click', () => {
     apiKey.set('');
     renderApiKeyStatus();
+  });
+
+  // Toast
+  toastClose.addEventListener('click', () => {
+    clearTimeout(toastTimer);
+    toastEl.classList.remove('show');
   });
 
   // Search
