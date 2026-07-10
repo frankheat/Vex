@@ -432,6 +432,9 @@ async function nvdFetch(path, params) {
         err.retryable = true;
         throw err;
       }
+      // NVD rejects overly generic keyword searches with an empty 404; a true
+      // "no matches" comes back as 200 with totalResults 0.
+      if (res.status === 404 && path === '/cpes/2.0') throw new Error('Search term too broad — add a version or a more specific keyword.');
       if (!res.ok) throw new Error(`NVD API error: HTTP ${res.status}`);
 
       const data = await res.json();
