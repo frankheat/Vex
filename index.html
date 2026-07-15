@@ -36,53 +36,19 @@
     header { padding: 24px 0 0; margin-bottom: 28px; }
     header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 12px; }
 
-    .api-key-bar {
+    .settings-bar {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
     }
-    .api-key-bar + .api-key-bar { margin-top: 8px; }
-    .api-key-bar label { font-size: 12px; color: var(--muted); flex-shrink: 0; }
-    #api-key-input {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      font-size: 12px;
-      padding: 5px 10px;
-      outline: none;
-      width: 240px;
-      transition: border-color 0.15s;
-    }
-    #api-key-input:focus { border-color: var(--accent); }
-    #api-key-input::placeholder { color: var(--muted); }
-    #api-key-save {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      font-size: 12px;
-      padding: 5px 12px;
-      cursor: pointer;
-      transition: border-color 0.15s;
-    }
-    #api-key-save:hover { border-color: var(--accent); }
-    #api-key-clear { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 5px 4px; }
-    #api-key-clear:hover { color: #f87171; }
+    .settings-bar label { font-size: 12px; color: var(--muted); flex-shrink: 0; }
     #limit-input { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 12px; padding: 5px 10px; outline: none; width: 56px; transition: border-color 0.15s; -moz-appearance: textfield; }
     #limit-input:focus { border-color: var(--accent); }
     #limit-input::-webkit-outer-spin-button, #limit-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .api-key-hint { font-size: 11px; color: var(--muted); }
-    .api-key-hint a { color: var(--accent); text-decoration: none; }
-    .api-key-hint a:hover { text-decoration: underline; }
-    #api-key-status {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 10px;
-    }
-    #api-key-status.set   { background: rgba(34,197,94,0.1);  color: #4ade80; }
-    #api-key-status.unset { background: rgba(100,116,139,0.1); color: var(--muted); }
+    .settings-hint { font-size: 11px; color: var(--muted); }
+    .settings-hint a { color: var(--accent); text-decoration: none; }
+    .settings-hint a:hover { text-decoration: underline; }
 
     /* ── Search bar ── */
     .search-row {
@@ -257,22 +223,14 @@
 <div class="app">
   <header>
     <h1>Vex</h1>
-    <div class="api-key-bar">
-      <label for="api-key-input">NVD API key</label>
-      <input id="api-key-input" type="password" placeholder="Optional — higher rate limits" autocomplete="off" />
-      <button id="api-key-save">Save</button>
-      <button id="api-key-clear" hidden>Remove</button>
-      <span id="api-key-status"></span>
-      <span class="api-key-hint">
-        <a href="https://nvd.nist.gov/developers/start-here" target="_blank" rel="noopener">Rate limits ↗</a>
-        &nbsp;·&nbsp;
-        <a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener">Get a free key ↗</a>
-      </span>
-    </div>
-    <div class="api-key-bar">
+    <div class="settings-bar">
       <label for="limit-input">Max results</label>
       <input id="limit-input" type="number" min="100" max="10000" step="100" />
-      <span class="api-key-hint">If results seem incomplete, try a higher value.</span>
+      <span class="settings-hint">
+        If results seem incomplete, try a higher value.
+        &nbsp;·&nbsp;
+        <a href="https://nvd.nist.gov/developers/start-here" target="_blank" rel="noopener">NVD rate limits ↗</a>
+      </span>
     </div>
   </header>
 
@@ -390,12 +348,6 @@ const cache = {
   },
 };
 
-// ── API key ───────────────────────────────────────────────────────────────────
-const apiKey = {
-  get: ()  => localStorage.getItem('nvd_api_key') || '',
-  set: (k) => k ? localStorage.setItem('nvd_api_key', k) : localStorage.removeItem('nvd_api_key'),
-};
-
 // ── Result limit ──────────────────────────────────────────────────────────────
 const resultLimit = {
   get: ()  => parseInt(localStorage.getItem('nvd_limit') || DEFAULT_LIMIT, 10),
@@ -417,16 +369,11 @@ async function nvdFetch(path, params) {
   const cached = cache.get(cacheKey);
   if (cached) return cached;
 
-  const headers = {};
-  const key = apiKey.get();
-  if (key) headers['apiKey'] = key;
-
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
-      if (res.status === 403) throw new Error('Invalid API key or rate limit exceeded.');
-      if (res.status === 429) throw new Error('Rate limited — add an NVD API key for higher limits (5 req/30 s without key).');
+      if (res.status === 403 || res.status === 429) throw new Error('Rate limited by NVD (5 requests / 30 s) — wait a moment and retry.');
       if (res.status >= 500) {
         const err = new Error(`NVD is temporarily unavailable (HTTP ${res.status}).`);
         err.retryable = true;
@@ -523,9 +470,6 @@ const nvdLink      = $('nvd-link');
 const cveCnt       = $('cve-cnt');
 const sevStats     = $('sev-stats');
 const cveTbody     = $('cve-tbody');
-const apiKeyInput  = $('api-key-input');
-const apiKeyStatus = $('api-key-status');
-const apiKeyClear  = $('api-key-clear');
 const limitInput   = $('limit-input');
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -705,13 +649,6 @@ function renderCves(cves, total) {
   }).join('');
 }
 
-function renderApiKeyStatus() {
-  const set = !!apiKey.get();
-  apiKeyStatus.textContent = set ? 'Key set' : 'No key';
-  apiKeyStatus.className = set ? 'set' : 'unset';
-  apiKeyClear.hidden = !set;
-}
-
 // ── Actions ───────────────────────────────────────────────────────────────────
 function applyFilter() {
   S.filtered = S.part === 'all' ? S.allCpes : S.allCpes.filter(c => c.part === S.part);
@@ -801,24 +738,16 @@ async function loadCves(cpeName) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 function init() {
+  // API keys were dropped: NVD rejects the CORS preflight that the apiKey
+  // header triggers, so keyed requests can never work from a browser.
+  localStorage.removeItem('nvd_api_key');
+
   // Result limit
   limitInput.value = resultLimit.get();
   limitInput.addEventListener('change', () => {
     const v = Math.min(10000, Math.max(100, parseInt(limitInput.value) || DEFAULT_LIMIT));
     limitInput.value = v;
     resultLimit.set(v);
-  });
-
-  // API key
-  renderApiKeyStatus();
-  $('api-key-save').addEventListener('click', () => {
-    apiKey.set(apiKeyInput.value.trim());
-    apiKeyInput.value = '';
-    renderApiKeyStatus();
-  });
-  $('api-key-clear').addEventListener('click', () => {
-    apiKey.set('');
-    renderApiKeyStatus();
   });
 
   // Toast

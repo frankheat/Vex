@@ -16,14 +16,11 @@ Navigate from vendor → product → version to find the exact CPE you need, the
 
 Open `index.html` directly in a browser, or serve it with any static web server (Apache, Nginx, etc.).
 
-### NVD API key
+### Rate limits
 
-Without a key: 5 requests / 30 s. With a key: 50 requests / 30 s.
-Rate limit details: [nvd.nist.gov/developers/start-here](https://nvd.nist.gov/developers/start-here).
+The NVD API allows 5 requests / 30 s ([details](https://nvd.nist.gov/developers/start-here)). Responses are cached for 5 minutes to make the most of that budget.
 
-Enter your key directly in the UI — it is stored in `localStorage` and never sent anywhere except the NVD API.
-
-Request a free key at [nvd.nist.gov/developers/request-an-api-key](https://nvd.nist.gov/developers/request-an-api-key).
+NVD API keys raise the limit to 50 requests / 30 s, but they cannot be used here: the NVD server rejects the CORS preflight triggered by the `apiKey` header, so keyed requests never work from browser-side JavaScript.
 
 ## Data source
 
