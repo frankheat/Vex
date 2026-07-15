@@ -412,7 +412,7 @@ function englishValue(items, key = 'value') {
 }
 
 function bestCvss(metrics) {
-  for (const [key, version] of [['cvssMetricV31','3.1'], ['cvssMetricV30','3.0'], ['cvssMetricV2','2.0']]) {
+  for (const [key, version] of [['cvssMetricV40','4.0'], ['cvssMetricV31','3.1'], ['cvssMetricV30','3.0'], ['cvssMetricV2','2.0']]) {
     const entries = metrics[key];
     if (!entries?.length) continue;
     const data = entries[0].cvssData ?? {};
