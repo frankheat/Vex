@@ -22,6 +22,10 @@ The NVD API allows 5 requests / 30 s ([details](https://nvd.nist.gov/developers/
 
 NVD API keys raise the limit to 50 requests / 30 s, but they cannot be used here: the NVD server rejects the CORS preflight triggered by the `apiKey` header, so keyed requests never work from browser-side JavaScript.
 
+## CVSS scoring
+
+A CVE can carry several CVSS scores (NVD, the CNA that published it, ADPs) across different CVSS versions, and they often disagree, sometimes by several severity levels. Vex takes the **worst case**: the highest base score across all sources and versions is used for the severity badge, sorting and counts. A `+N` marker next to the badge flags CVEs with additional scores, and the detail panel lists every score with its source, type (Primary = NVD, Secondary = CNA/ADP) and vector.
+
 ## Data source
 
 All vulnerability data is sourced in real time from the [NIST National Vulnerability Database](https://nvd.nist.gov/).

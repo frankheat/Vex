@@ -200,6 +200,12 @@
     .dv { font-size: 13px; }
     .dv.mono { font-family: monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
     .detail-desc { font-size: 13px; line-height: 1.75; }
+    .multi { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 0 6px; vertical-align: middle; cursor: help; }
+    table.scores { margin-bottom: 16px; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    table.scores th { padding: 6px 10px; }
+    table.scores td { padding: 6px 10px; }
+    table.scores td.mono { font-family: monospace; word-break: break-all; color: var(--muted); }
+    table.scores tr.worst td { background: var(--surface-2); }
     .nvd-link { display: inline-block; margin-top: 12px; color: var(--accent); text-decoration: none; font-size: 13px; }
     .nvd-link:hover { text-decoration: underline; }
 
@@ -411,15 +417,24 @@ function englishValue(items, key = 'value') {
   return (items.find(i => i.lang === 'en') ?? items[0] ?? {})[key] ?? '';
 }
 
-function bestCvss(metrics) {
-  for (const [key, version] of [['cvssMetricV40','4.0'], ['cvssMetricV31','3.1'], ['cvssMetricV30','3.0'], ['cvssMetricV2','2.0']]) {
-    const entries = metrics[key];
-    if (!entries?.length) continue;
-    const data = entries[0].cvssData ?? {};
-    const severity = (data.baseSeverity ?? entries[0].baseSeverity ?? 'UNKNOWN').toUpperCase();
-    return { version, score: data.baseScore ?? 0, severity, vector: data.vectorString ?? '' };
-  }
-  return null;
+const CVSS_VERSIONS = [['cvssMetricV40','4.0'], ['cvssMetricV31','3.1'], ['cvssMetricV30','3.0'], ['cvssMetricV2','2.0']];
+
+// Flatten every CVSS entry (all versions, all sources: NVD, CNA, ADP) into one list.
+function allCvss(metrics) {
+  return CVSS_VERSIONS.flatMap(([key, version]) => (metrics[key] ?? []).map(e => {
+    const data = e.cvssData ?? {};
+    return { version, score: data.baseScore ?? 0,
+             severity: (data.baseSeverity ?? e.baseSeverity ?? 'UNKNOWN').toUpperCase(),
+             vector: data.vectorString ?? '', source: e.source ?? '', type: e.type ?? '' };
+  }));
+}
+
+// Worst case: highest base score across all sources/versions. Ties prefer Primary (NVD), then newer version.
+function worstCvss(entries) {
+  if (!entries.length) return null;
+  return entries.reduce((best, e) =>
+    e.score > best.score ||
+    (e.score === best.score && e.type === 'Primary' && best.type !== 'Primary') ? e : best);
 }
 
 function parseCpes(raw) {
@@ -434,10 +449,11 @@ function parseCpes(raw) {
 function parseCves(raw) {
   return (raw.vulnerabilities ?? []).flatMap(({ cve = {} }) => {
     if (!cve.id) return [];
+    const scores = allCvss(cve.metrics ?? {});
     return [{ id: cve.id, description: englishValue(cve.descriptions ?? []),
               published: (cve.published ?? '').slice(0, 10),
               lastModified: (cve.lastModified ?? '').slice(0, 10),
-              status: cve.vulnStatus ?? '', cvss: bestCvss(cve.metrics ?? {}),
+              status: cve.vulnStatus ?? '', cvss: worstCvss(scores), scores,
               url: `https://nvd.nist.gov/vuln/detail/${cve.id}` }];
   });
 }
@@ -490,6 +506,10 @@ function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function sourceLabel(sc) {
+  return sc.type === 'Primary' ? 'NVD' : sc.source.replace(/^security-advisories@/, '');
 }
 
 function badge(severity) {
@@ -620,13 +640,26 @@ function renderCves(cves, total) {
     const score = c.cvss ? c.cvss.score.toFixed(1) : '—';
     const ver   = c.cvss ? `v${c.cvss.version}` : '—';
     const prev  = c.description.length > 130 ? c.description.slice(0, 130) + '…' : c.description;
+    const multi = c.scores.length > 1;
     const cvssDetail = c.cvss ? `
-      <div><div class="dl">CVSS Score</div><div class="dv">${badge(c.cvss.severity)} <strong>${c.cvss.score.toFixed(1)}</strong> (v${c.cvss.version})</div></div>
+      <div><div class="dl">CVSS Score (worst case)</div><div class="dv">${badge(c.cvss.severity)} <strong>${c.cvss.score.toFixed(1)}</strong> (v${c.cvss.version}, ${esc(sourceLabel(c.cvss))})</div></div>
       <div><div class="dl">CVSS Vector</div><div class="dv mono">${esc(c.cvss.vector)}</div></div>` : '';
+    const scoresTable = multi ? `
+      <div class="dl">All CVSS scores</div>
+      <table class="scores">
+        <thead><tr><th>Source</th><th>Type</th><th>Ver.</th><th>Score</th><th>Severity</th><th>Vector</th></tr></thead>
+        <tbody>${c.scores.map(sc => `
+          <tr class="${sc === c.cvss ? 'worst' : ''}">
+            <td>${esc(sc.source)}</td><td>${esc(sc.type)}</td><td>v${sc.version}</td>
+            <td style="font-weight:600">${sc.score.toFixed(1)}</td><td>${badge(sc.severity)}</td>
+            <td class="mono">${esc(sc.vector)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '';
     return `
       <tr class="cve-row" data-i="${i}">
         <td><div class="cve-id">${esc(c.id)}</div><div class="desc-prev">${esc(prev)}</div></td>
-        <td>${badge(sev)}</td>
+        <td>${badge(sev)}${multi ? `<span class="multi" title="${c.scores.length} CVSS scores from different sources — worst case shown">+${c.scores.length - 1}</span>` : ''}</td>
         <td style="font-weight:600;font-variant-numeric:tabular-nums">${score}</td>
         <td style="color:var(--muted);font-size:12px">${ver}</td>
         <td style="color:var(--muted)">${esc(c.published)}</td>
@@ -641,6 +674,7 @@ function renderCves(cves, total) {
             <div><div class="dl">Last modified</div><div class="dv">${esc(c.lastModified)}</div></div>
             ${cvssDetail}
           </div>
+          ${scoresTable}
           <div class="dl">Description</div>
           <div class="detail-desc">${esc(c.description)}</div>
           <a class="nvd-link" href="${esc(c.url)}" target="_blank" rel="noopener">↗ Open on NIST NVD</a>
