@@ -24,7 +24,10 @@ NVD API keys raise the limit to 50 requests / 30 s, but they cannot be used here
 
 ## CVSS scoring
 
-A CVE can carry several CVSS scores (NVD, the CNA that published it, ADPs) across different CVSS versions, and they often disagree, sometimes by several severity levels. Vex takes the **worst case**: the highest base score across all sources and versions is used for the severity badge, sorting and counts. A `+N` marker next to the badge flags CVEs with additional scores, and the detail panel lists every score with its source, type (Primary = NVD, Secondary = CNA/ADP) and vector.
+A CVE can carry several CVSS scores (NVD, the CNA that published it, ADPs) across different CVSS versions, and they often disagree, sometimes by several severity levels. Scores from different CVSS versions are on different scales and cannot be compared, so Vex handles the two dimensions separately:
+
+- **Version**: a `v4.0 | v3.x | v2.0` selector above the table (default v3.x, remembered across sessions) decides which CVSS version drives the Score and Severity columns, the sort order and the severity counts. The selector never hides CVEs: a CVE without a score in the selected version is still listed, greyed out and placed after the others, showing the score of the newest version it does have (marked with `⚠` and excluded from the severity counts).
+- **Source**: within the selected version, Vex takes the **worst case** — the highest base score among all sources. A `+N` marker next to the badge flags CVEs with additional scores, and the detail panel lists every score with its source, type (Primary = NVD, Secondary = CNA/ADP), version and vector.
 
 ## Data source
 

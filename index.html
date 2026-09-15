@@ -176,7 +176,13 @@
     }
     .cpe-bar .lbl { color: var(--muted); font-size: 12px; flex-shrink: 0; }
     .cpe-bar code { font-family: monospace; font-size: 12px; word-break: break-all; }
-    .cve-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+    .cve-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .cve-header .cvss-select { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+    .cve-header .cvss-select .lbl { color: var(--muted); font-size: 12px; margin-right: 2px; }
+    .cvss-select .chip { padding: 2px 10px; }
+    tr.cve-row.fb .score, tr.cve-row.fb .badge { opacity: 0.45; font-style: italic; }
+    tr.cve-row.fb .ver { color: #f59e0b; }
+    .stat-pill.fb { color: var(--muted); font-style: italic; }
     .cve-header h2 { font-size: 15px; font-weight: 600; }
     .cve-header .cnt { color: var(--muted); font-size: 13px; }
     .sev-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -302,6 +308,12 @@
     <div class="cve-header">
       <h2>Associated vulnerabilities</h2>
       <span class="cnt" id="cve-cnt"></span>
+      <div class="cvss-select" id="cvss-select" title="CVSS version used for score, severity, sorting and counts. CVEs without a score in this version fall back to the newest version they have, shown greyed out.">
+        <span class="lbl">CVSS</span>
+        <button class="chip" data-cvss="4.0">v4.0</button>
+        <button class="chip" data-cvss="3.x">v3.x</button>
+        <button class="chip" data-cvss="2.0">v2.0</button>
+      </div>
     </div>
     <div id="sev-stats" class="sev-stats"></div>
     <div class="table-wrap">
@@ -358,6 +370,14 @@ const cache = {
 const resultLimit = {
   get: ()  => parseInt(localStorage.getItem('nvd_limit') || DEFAULT_LIMIT, 10),
   set: (v) => localStorage.setItem('nvd_limit', v),
+};
+
+// ── CVSS version selection ────────────────────────────────────────────────────
+const CVSS_FAMILIES = ['4.0', '3.x', '2.0'];
+const DEFAULT_CVSS_FAMILY = '3.x';
+const cvssFamilyPref = {
+  get: ()  => { const v = localStorage.getItem('cvss_family'); return CVSS_FAMILIES.includes(v) ? v : DEFAULT_CVSS_FAMILY; },
+  set: (v) => localStorage.setItem('cvss_family', v),
 };
 
 // ── NVD API ───────────────────────────────────────────────────────────────────
@@ -429,12 +449,27 @@ function allCvss(metrics) {
   }));
 }
 
-// Worst case: highest base score across all sources/versions. Ties prefer Primary (NVD), then newer version.
+const cvssFamily = version => version.startsWith('3.') ? '3.x' : version;
+
+// Worst case within one list: highest base score. Ties prefer Primary (NVD).
 function worstCvss(entries) {
   if (!entries.length) return null;
   return entries.reduce((best, e) =>
     e.score > best.score ||
     (e.score === best.score && e.type === 'Primary' && best.type !== 'Primary') ? e : best);
+}
+
+// Score to display for the selected CVSS family: worst case among sources in that family.
+// If the CVE has no score in that family, fall back to the newest family it does have (flagged).
+// Scores from different CVSS versions are not comparable, so the fallback is never mixed with native ones.
+function pickCvss(scores, family) {
+  const native = worstCvss(scores.filter(sc => cvssFamily(sc.version) === family));
+  if (native) return { ...native, fallback: false };
+  for (const fam of CVSS_FAMILIES) {
+    const alt = worstCvss(scores.filter(sc => cvssFamily(sc.version) === fam));
+    if (alt) return { ...alt, fallback: true };
+  }
+  return null;
 }
 
 function parseCpes(raw) {
@@ -449,11 +484,10 @@ function parseCpes(raw) {
 function parseCves(raw) {
   return (raw.vulnerabilities ?? []).flatMap(({ cve = {} }) => {
     if (!cve.id) return [];
-    const scores = allCvss(cve.metrics ?? {});
     return [{ id: cve.id, description: englishValue(cve.descriptions ?? []),
               published: (cve.published ?? '').slice(0, 10),
               lastModified: (cve.lastModified ?? '').slice(0, 10),
-              status: cve.vulnStatus ?? '', cvss: worstCvss(scores), scores,
+              status: cve.vulnStatus ?? '', scores: allCvss(cve.metrics ?? {}),
               url: `https://nvd.nist.gov/vuln/detail/${cve.id}` }];
   });
 }
@@ -462,6 +496,7 @@ function parseCves(raw) {
 const S = {
   part: 'all', allCpes: [], filtered: [],
   selectedVendor: null, selectedProduct: null, selectedCpe: null,
+  cvssFamily: cvssFamilyPref.get(), cves: [], cveTotal: 0,
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -620,36 +655,51 @@ function renderVersions() {
 }
 
 function renderCves(cves, total) {
+  S.cves = cves; S.cveTotal = total;
+  const fam = S.cvssFamily;
   cveCnt.textContent = total !== cves.length ? `${total} (showing ${cves.length})` : String(total);
+  document.querySelectorAll('#cvss-select .chip').forEach(ch => ch.classList.toggle('active', ch.dataset.cvss === fam));
 
+  for (const c of cves) c.cvss = pickCvss(c.scores, fam);
+
+  // Severity counts only include CVEs scored in the selected version — other versions use a different scale.
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, NONE: 0 };
-  for (const c of cves) { const s = c.cvss?.severity; if (s in counts) counts[s]++; }
+  let fallbackN = 0;
+  for (const c of cves) {
+    if (!c.cvss) continue;
+    if (c.cvss.fallback) { fallbackN++; continue; }
+    const s = c.cvss.severity; if (s in counts) counts[s]++;
+  }
   sevStats.innerHTML = Object.entries(counts)
     .filter(([, n]) => n > 0)
     .map(([s, n]) => `<div class="stat-pill">${badge(s)}<strong>${n}</strong></div>`)
-    .join('');
+    .join('') + (fallbackN ? `<div class="stat-pill fb" title="Shown with the score of another CVSS version — not comparable with the rest">no v${fam} score <strong>${fallbackN}</strong></div>` : '');
 
   if (!cves.length) {
     cveTbody.innerHTML = '<tr class="state-row"><td colspan="6">No CVEs found for this CPE.</td></tr>';
     return;
   }
 
-  const sorted = [...cves].sort((a, b) => (b.cvss?.score ?? 0) - (a.cvss?.score ?? 0));
+  // Native scores first (sorted by score), then fallbacks (sorted by score), then unscored.
+  const rank = c => !c.cvss ? 2 : c.cvss.fallback ? 1 : 0;
+  const sorted = [...cves].sort((a, b) => rank(a) - rank(b) || (b.cvss?.score ?? 0) - (a.cvss?.score ?? 0));
   cveTbody.innerHTML = sorted.map((c, i) => {
     const sev   = c.cvss?.severity ?? 'NA';
     const score = c.cvss ? c.cvss.score.toFixed(1) : '—';
-    const ver   = c.cvss ? `v${c.cvss.version}` : '—';
+    const fb    = c.cvss?.fallback ?? false;
+    const fbMsg = fb ? `No CVSS v${fam} score for this CVE — showing its v${c.cvss.version} score, which is not comparable with the others` : '';
+    const ver   = c.cvss ? `v${c.cvss.version}${fb ? ' ⚠' : ''}` : '—';
     const prev  = c.description.length > 130 ? c.description.slice(0, 130) + '…' : c.description;
     const multi = c.scores.length > 1;
     const cvssDetail = c.cvss ? `
-      <div><div class="dl">CVSS Score (worst case)</div><div class="dv">${badge(c.cvss.severity)} <strong>${c.cvss.score.toFixed(1)}</strong> (v${c.cvss.version}, ${esc(sourceLabel(c.cvss))})</div></div>
+      <div><div class="dl">CVSS Score (worst case${fb ? `, no v${fam} available` : ''})</div><div class="dv">${badge(c.cvss.severity)} <strong>${c.cvss.score.toFixed(1)}</strong> (v${c.cvss.version}, ${esc(sourceLabel(c.cvss))})</div></div>
       <div><div class="dl">CVSS Vector</div><div class="dv mono">${esc(c.cvss.vector)}</div></div>` : '';
     const scoresTable = multi ? `
       <div class="dl">All CVSS scores</div>
       <table class="scores">
         <thead><tr><th>Source</th><th>Type</th><th>Ver.</th><th>Score</th><th>Severity</th><th>Vector</th></tr></thead>
         <tbody>${c.scores.map(sc => `
-          <tr class="${sc === c.cvss ? 'worst' : ''}">
+          <tr class="${c.cvss && sc.version === c.cvss.version && sc.source === c.cvss.source && sc.score === c.cvss.score ? 'worst' : ''}">
             <td>${esc(sc.source)}</td><td>${esc(sc.type)}</td><td>v${sc.version}</td>
             <td style="font-weight:600">${sc.score.toFixed(1)}</td><td>${badge(sc.severity)}</td>
             <td class="mono">${esc(sc.vector)}</td>
@@ -657,11 +707,11 @@ function renderCves(cves, total) {
         </tbody>
       </table>` : '';
     return `
-      <tr class="cve-row" data-i="${i}">
+      <tr class="cve-row${fb ? ' fb' : ''}" data-i="${i}"${fb ? ` title="${esc(fbMsg)}"` : ''}>
         <td><div class="cve-id">${esc(c.id)}</div><div class="desc-prev">${esc(prev)}</div></td>
-        <td>${badge(sev)}${multi ? `<span class="multi" title="${c.scores.length} CVSS scores from different sources — worst case shown">+${c.scores.length - 1}</span>` : ''}</td>
-        <td style="font-weight:600;font-variant-numeric:tabular-nums">${score}</td>
-        <td style="color:var(--muted);font-size:12px">${ver}</td>
+        <td>${badge(sev)}${multi ? `<span class="multi" title="${c.scores.length} CVSS scores across sources/versions — see details">+${c.scores.length - 1}</span>` : ''}</td>
+        <td class="score" style="font-weight:600;font-variant-numeric:tabular-nums">${score}</td>
+        <td class="ver" style="color:var(--muted);font-size:12px">${ver}</td>
         <td style="color:var(--muted)">${esc(c.published)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(c.status)}</td>
       </tr>
@@ -826,12 +876,22 @@ function init() {
   });
 
   // Part filter chips
-  document.querySelectorAll('.chip').forEach(chip => {
+  document.querySelectorAll('.chip[data-part]').forEach(chip => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      document.querySelectorAll('.chip[data-part]').forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       S.part = chip.dataset.part;
       if (S.allCpes.length) applyFilter();
+    });
+  });
+
+  // CVSS version chips
+  document.querySelectorAll('#cvss-select .chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.cvss === S.cvssFamily);
+    chip.addEventListener('click', () => {
+      S.cvssFamily = chip.dataset.cvss;
+      cvssFamilyPref.set(S.cvssFamily);
+      renderCves(S.cves, S.cveTotal);
     });
   });
 }
