@@ -806,7 +806,7 @@ async function doSearch(q) {
 async function loadCves(cpeName) {
   cveSectionEl.hidden = false;
   cpeLbl.textContent  = cpeName;
-  nvdLink.href = `https://nvd.nist.gov/vuln/search#/nvd/home?cpeFilterMode=cpe&cpeName=${cpeName}`;
+  nvdLink.href = `https://nvd.nist.gov/vuln/search?cpeFilterMode=cpe&cpeName=${cpeName}&resultType=records`;
   cveCnt.textContent = ''; sevStats.innerHTML = '';
   cveTbody.innerHTML = '<tr class="state-row"><td colspan="6"><span class="spinner"></span>Loading CVEs…</td></tr>';
   cveSectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
