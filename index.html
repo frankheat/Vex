@@ -206,7 +206,14 @@
     .dv { font-size: 13px; }
     .dv.mono { font-family: monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
     .detail-desc { font-size: 13px; line-height: 1.75; }
-    .multi { display: inline-block; margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 0 6px; vertical-align: middle; cursor: help; }
+    /* NVD column: grey when it agrees with the worst case, severity-coloured when it disagrees */
+    th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.nvd { color: var(--muted); }
+    td.nvd.diff { cursor: help; }
+    td.nvd.diff.sev-CRITICAL { color: #f87171; } td.nvd.diff.sev-HIGH { color: #fb923c; } td.nvd.diff.sev-MEDIUM { color: #fbbf24; }
+    td.nvd.diff.sev-LOW { color: #4ade80; } td.nvd.diff.sev-NONE { color: #94a3b8; }
+    thead th[title] { cursor: help; }
+    td.nowrap { white-space: nowrap; }
     table.scores { margin-bottom: 16px; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
     table.scores th { padding: 6px 10px; }
     table.scores td { padding: 6px 10px; }
@@ -322,7 +329,8 @@
           <tr>
             <th>CVE ID &amp; description</th>
             <th>Severity</th>
-            <th>Score</th>
+            <th class="num" title="Highest base score among all sources (NVD, CNA, ADP) in the selected CVSS version">Worst</th>
+            <th class="num" title="Score assigned by NVD analysts in the selected CVSS version">NVD</th>
             <th>CVSS</th>
             <th>Published</th>
             <th>Status</th>
@@ -676,7 +684,7 @@ function renderCves(cves, total) {
     .join('') + (fallbackN ? `<div class="stat-pill fb" title="Shown with the score of another CVSS version — not comparable with the rest">no v${fam} score <strong>${fallbackN}</strong></div>` : '');
 
   if (!cves.length) {
-    cveTbody.innerHTML = '<tr class="state-row"><td colspan="6">No CVEs found for this CPE.</td></tr>';
+    cveTbody.innerHTML = '<tr class="state-row"><td colspan="7">No CVEs found for this CPE.</td></tr>';
     return;
   }
 
@@ -691,6 +699,13 @@ function renderCves(cves, total) {
     const ver   = c.cvss ? `v${c.cvss.version}${fb ? ' ⚠' : ''}` : '—';
     const prev  = c.description.length > 130 ? c.description.slice(0, 130) + '…' : c.description;
     const multi = c.scores.length > 1;
+    // NVD's own score in the displayed CVSS version, shown next to the worst case for comparison.
+    const nvd = c.cvss ? c.scores.find(sc => sc.type === 'Primary' && cvssFamily(sc.version) === cvssFamily(c.cvss.version)) : null;
+    const nvdDiff = nvd && nvd.score !== c.cvss.score;
+    const nvdCell = !c.cvss ? '—'
+      : !nvd ? `<span title="No NVD score in v${c.cvss.version} — ${c.status === 'Awaiting Analysis' ? 'not yet analyzed by NVD' : 'only CNA/ADP scores available'}">—</span>`
+      : nvd.score.toFixed(1);
+    const nvdAttrs = nvdDiff ? ` class="num nvd diff sev-${nvd.severity}" title="NVD rates this CVE ${nvd.score.toFixed(1)} ${nvd.severity}; the worst case comes from ${esc(sourceLabel(c.cvss))}"` : ' class="num nvd"';
     const cvssDetail = c.cvss ? `
       <div><div class="dl">CVSS Score (worst case${fb ? `, no v${fam} available` : ''})</div><div class="dv">${badge(c.cvss.severity)} <strong>${c.cvss.score.toFixed(1)}</strong> (v${c.cvss.version}, ${esc(sourceLabel(c.cvss))})</div></div>
       <div><div class="dl">CVSS Vector</div><div class="dv mono">${esc(c.cvss.vector)}</div></div>` : '';
@@ -709,14 +724,15 @@ function renderCves(cves, total) {
     return `
       <tr class="cve-row${fb ? ' fb' : ''}" data-i="${i}"${fb ? ` title="${esc(fbMsg)}"` : ''}>
         <td><div class="cve-id">${esc(c.id)}</div><div class="desc-prev">${esc(prev)}</div></td>
-        <td>${badge(sev)}${multi ? `<span class="multi" title="${c.scores.length} CVSS scores across sources/versions — see details">+${c.scores.length - 1}</span>` : ''}</td>
-        <td class="score" style="font-weight:600;font-variant-numeric:tabular-nums">${score}</td>
-        <td class="ver" style="color:var(--muted);font-size:12px">${ver}</td>
-        <td style="color:var(--muted)">${esc(c.published)}</td>
+        <td>${badge(sev)}</td>
+        <td class="num score" style="font-weight:600">${score}</td>
+        <td${nvdAttrs}>${nvdCell}</td>
+        <td class="ver nowrap" style="color:var(--muted);font-size:12px">${ver}</td>
+        <td class="nowrap" style="color:var(--muted)">${esc(c.published)}</td>
         <td style="color:var(--muted);font-size:12px">${esc(c.status)}</td>
       </tr>
       <tr class="cve-detail" data-for="${i}">
-        <td colspan="6">
+        <td colspan="7">
           <div class="detail-grid">
             <div><div class="dl">CVE ID</div><div class="dv mono">${esc(c.id)}</div></div>
             <div><div class="dl">Status</div><div class="dv">${esc(c.status)}</div></div>
@@ -808,7 +824,7 @@ async function loadCves(cpeName) {
   cpeLbl.textContent  = cpeName;
   nvdLink.href = `https://nvd.nist.gov/vuln/search?cpeFilterMode=cpe&cpeName=${cpeName}&resultType=records`;
   cveCnt.textContent = ''; sevStats.innerHTML = '';
-  cveTbody.innerHTML = '<tr class="state-row"><td colspan="6"><span class="spinner"></span>Loading CVEs…</td></tr>';
+  cveTbody.innerHTML = '<tr class="state-row"><td colspan="7"><span class="spinner"></span>Loading CVEs…</td></tr>';
   cveSectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
