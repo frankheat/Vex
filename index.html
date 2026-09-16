@@ -315,14 +315,17 @@
     thead th:first-child { padding-left: 24px; }
     thead th[title] { cursor: help; }
     tbody tr { border-bottom: 1px solid var(--outline-variant); }
-    tbody tr:last-child, tbody tr:has(+ tr.cve-detail.open), tr.cve-detail { border-bottom-color: transparent; }
+    tbody tr:last-child, tbody tr:has(+ tr.cve-detail.open), tr.cve-detail:not(.open) { border-bottom-color: transparent; }
     tbody td { padding: 14px 16px; vertical-align: top; }
     tbody td:first-child { padding-left: 24px; }
     tr.cve-row { cursor: pointer; transition: background .15s var(--ease-emph); }
     tr.cve-row:hover { background: color-mix(in srgb, var(--on-surface) 6%, transparent); }
-    tr.cve-row:has(+ tr.cve-detail.open) { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+    tr.cve-row:has(+ tr.cve-detail.open), tr.cve-row:has(+ tr.cve-detail.open):hover, tr.cve-detail.open { background: var(--surface-container); }
+    :root[data-theme="dark"] tr.cve-row:has(+ tr.cve-detail.open), :root[data-theme="dark"] tr.cve-row:has(+ tr.cve-detail.open):hover, :root[data-theme="dark"] tr.cve-detail.open { background: var(--surface-high); }
     .cve-id { font-family: var(--mono); font-size: 14px; font-weight: 500; letter-spacing: 0; color: var(--on-surface); }
     .desc-prev { color: var(--on-surface-variant); font-size: 12px; line-height: 16px; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 560px; }
+    /* Expanded row: the preview simply un-clamps into the full description (body text) */
+    tr.cve-row:has(+ tr.cve-detail.open) .desc-prev { -webkit-line-clamp: unset; color: var(--on-surface); font-size: 14px; line-height: 22px; max-width: 80ch; margin-top: 8px; }
     th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     td.score { font-weight: 600; font-size: 16px; }
     td.nvd { color: var(--on-surface-variant); }
@@ -335,14 +338,13 @@
 
     tr.cve-detail { display: none; }
     tr.cve-detail.open { display: table-row; }
-    tr.cve-detail td { padding: 0 16px 16px; cursor: default; }
-    .detail-card { background: var(--surface-container); border-radius: 12px; padding: 16px 24px; animation: rise .3s var(--ease-emph) both; }
-    :root[data-theme="dark"] .detail-card { background: var(--surface-high); }
+    tr.cve-detail td { padding: 0 24px 20px; cursor: default; }
+    tr.cve-detail.open { border-bottom: 1px solid var(--outline-variant); }
+    .detail-card { animation: rise .3s var(--ease-emph) both; }
     .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; margin-bottom: 20px; }
     .dl { font-size: 12px; line-height: 16px; letter-spacing: 0.4px; color: var(--on-surface-variant); margin-bottom: 4px; }
     .dv { font-size: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .dv.mono { font-family: var(--mono); font-size: 13px; letter-spacing: 0; word-break: break-all; }
-    .detail-desc { font-size: 14px; line-height: 22px; max-width: 80ch; }
     table.scores { margin: 4px 0 20px; font-size: 13px; background: var(--card); border-radius: 8px; overflow: hidden; }
     table.scores th { padding: 10px 12px; }
     table.scores td { padding: 10px 12px; vertical-align: middle; }
@@ -924,7 +926,6 @@ function renderCves(cves, total) {
     const fb    = c.cvss?.fallback ?? false;
     const fbMsg = fb ? `No CVSS v${fam} score for this CVE — showing its v${c.cvss.version} score, which is not comparable with the others` : '';
     const ver   = c.cvss ? `v${c.cvss.version}${fb ? ' ⚠' : ''}` : '—';
-    const prev  = c.description.length > 130 ? c.description.slice(0, 130) + '…' : c.description;
     const multi = c.scores.length > 1;
     // NVD's own score in the displayed CVSS version, shown next to the worst case for comparison.
     const nvd = c.cvss ? c.scores.find(sc => sc.type === 'Primary' && cvssFamily(sc.version) === cvssFamily(c.cvss.version)) : null;
@@ -950,7 +951,7 @@ function renderCves(cves, total) {
       </table>` : '';
     return `
       <tr class="cve-row${fb ? ' fb' : ''}" data-i="${i}"${fb ? ` title="${esc(fbMsg)}"` : ''}>
-        <td><div class="cve-id">${esc(c.id)}</div><div class="desc-prev">${esc(prev)}</div></td>
+        <td><div class="cve-id">${esc(c.id)}</div><div class="desc-prev">${esc(c.description)}</div></td>
         <td>${badge(sev)}</td>
         <td class="num score">${score}</td>
         <td${nvdAttrs}>${nvdCell}</td>
@@ -969,8 +970,6 @@ function renderCves(cves, total) {
             ${cvssDetail}
           </div>
           ${scoresTable}
-          <div class="dl">Description</div>
-          <div class="detail-desc">${esc(c.description)}</div>
           <a class="btn-text nvd-link" href="${esc(c.url)}" target="_blank" rel="noopener"><svg class="ic ic-18"><use href="#ic-open"/></svg>Open on NIST NVD</a>
           </div>
         </td>
