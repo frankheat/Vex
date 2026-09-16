@@ -212,7 +212,11 @@
       background: var(--surface-highest); color: var(--on-surface-variant);
     }
     .col-n:empty { display: none; }
-    .col-body { overflow-y: auto; height: 352px; padding: 0 8px 8px; scrollbar-width: thin; scrollbar-color: var(--outline-variant) transparent; }
+    .col-body { overflow-y: auto; flex: 1 1 auto; min-height: 160px; max-height: 352px; padding: 0 8px 8px; scrollbar-width: thin; scrollbar-color: var(--outline-variant) transparent; }
+    .variant-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px 12px; flex-shrink: 0; }
+    .variant-bar .chip { height: 28px; padding: 0 12px; font-size: 12px; gap: 6px; }
+    .variant-bar .chip .chip-check { margin-left: -4px; }
+    .chip-n { font-size: 11px; font-weight: 500; opacity: .7; }
     .col-body::-webkit-scrollbar { width: 6px; }
     .col-body::-webkit-scrollbar-thumb { background: var(--outline-variant); border-radius: 3px; }
     .col-placeholder, .col-loading {
@@ -237,6 +241,10 @@
       font-size: 12px; font-weight: 500; letter-spacing: 0.4px; background: var(--surface-highest); color: var(--on-surface-variant); position: relative;
     }
     .ver-name { font-family: var(--mono); font-size: 13px; letter-spacing: 0; }
+    .item-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; position: relative; }
+    .item-text .item-name { flex: none; }
+    .item-tags { display: flex; gap: 4px; overflow: hidden; }
+    .col-item.two-line { height: 58px; border-radius: 29px; }
     .dep-tag { flex-shrink: 0; font-size: 11px; font-weight: 500; letter-spacing: 0.5px; padding: 1px 8px; border-radius: 6px; background: var(--surface-highest); color: var(--on-surface-variant); position: relative; }
     .ver-arrow { color: var(--on-surface-variant); position: relative; transition: transform .2s var(--ease-spring), color .15s; }
     .col-item:hover .ver-arrow, .col-item.selected .ver-arrow { color: var(--primary); transform: translateX(2px); }
@@ -261,7 +269,10 @@
       border-radius: 20px; padding: 12px 12px 12px 20px; margin-bottom: 24px;
     }
     .cpe-bar .lbl { font-size: 12px; font-weight: 500; letter-spacing: 0.4px; opacity: .8; flex-shrink: 0; }
-    .cpe-bar code { font-family: var(--mono); font-size: 13px; letter-spacing: 0; word-break: break-all; flex: 1; min-width: 200px; }
+    .cpe-bar .cpe-text { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 2px; }
+    .cpe-bar code { font-family: var(--mono); font-size: 13px; letter-spacing: 0; word-break: break-all; }
+    .cpe-bar .cpe-title { font-size: 12px; line-height: 16px; letter-spacing: 0.4px; opacity: .8; }
+    .cpe-bar .cpe-title:empty { display: none; }
     .btn-text {
       display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 12px; border-radius: 20px;
       color: var(--primary); font: inherit; font-size: 14px; font-weight: 500; letter-spacing: 0.1px; text-decoration: none;
@@ -372,7 +383,7 @@
 
     @media (max-width: 860px) {
       .columns { grid-template-columns: 1fr; }
-      .col-body { height: 240px; }
+      .col-body { max-height: 240px; }
       .detail-grid { grid-template-columns: 1fr; }
       .brand-sub { display: none; }
       #toast { left: 16px; right: 16px; min-width: 0; }
@@ -457,6 +468,7 @@
           <span class="col-label">Version / CPE</span>
           <span class="col-n" id="version-n"></span>
         </div>
+        <div class="variant-bar" id="variant-bar" hidden></div>
         <div class="col-body" id="version-list">
           <div class="col-placeholder">Select a product</div>
         </div>
@@ -467,7 +479,7 @@
   <div id="cve-section" hidden>
     <div class="cpe-bar">
       <span class="lbl">Selected CPE</span>
-      <code id="cpe-label"></code>
+      <span class="cpe-text"><code id="cpe-label"></code><span class="cpe-title" id="cpe-title"></span></span>
       <a id="nvd-link" class="btn-text" href="#" target="_blank" rel="noopener">
         <svg class="ic ic-18"><use href="#ic-open"/></svg>Verify on NVD
       </a>
@@ -609,7 +621,8 @@ const fetchCves = (cpeName) => nvdFetch('/cves/2.0', { cpeName, resultsPerPage: 
 function parseCpeName(cpeName) {
   const parts = cpeName.split(':');
   const field = i => { const v = parts[i] ?? '*'; return (v === '' || v === '-') ? '*' : v; };
-  return { part: field(2), vendor: field(3), product: field(4), version: field(5), update: field(6) };
+  return { part: field(2), vendor: field(3), product: field(4), version: field(5), update: field(6),
+           swEdition: field(9), targetSw: field(10), targetHw: field(11) };
 }
 
 function englishValue(items, key = 'value') {
@@ -676,6 +689,7 @@ const S = {
   part: 'all', allCpes: [], filtered: [],
   selectedVendor: null, selectedProduct: null, selectedCpe: null,
   cvssFamily: cvssFamilyPref.get(), cves: [], cveTotal: 0,
+  variant: null, // sw_edition/target filter for the version list; null = all
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -695,7 +709,9 @@ const versionList  = $('version-list');
 const vendorN      = $('vendor-n');
 const productN     = $('product-n');
 const versionN     = $('version-n');
+const variantBar   = $('variant-bar');
 const cpeLbl       = $('cpe-label');
+const cpeTitle     = $('cpe-title');
 const nvdLink      = $('nvd-link');
 const cveCnt       = $('cve-cnt');
 const sevStats     = $('sev-stats');
@@ -747,6 +763,11 @@ function versionLabel(cpe) {
   return '—';
 }
 
+// CPE fields that tell otherwise identical versions apart (sw_edition, target_sw, target_hw).
+function versionTags(cpe) {
+  return [cpe.swEdition, cpe.targetSw, cpe.targetHw].filter(v => v !== '*').map(v => v.replace(/_/g, ' '));
+}
+
 function sortVersions(cpes) {
   const parseVer = v => v.split('.').map(x => { const n = parseInt(x); return isNaN(n) ? x : n; });
   return [...cpes].sort((a, b) => {
@@ -758,7 +779,8 @@ function sortVersions(cpes) {
       if (typeof x === typeof y) return y > x ? 1 : -1;
       return typeof y === 'number' ? 1 : -1;
     }
-    return cpeUpdateField(b.cpeName).localeCompare(cpeUpdateField(a.cpeName));
+    return cpeUpdateField(b.cpeName).localeCompare(cpeUpdateField(a.cpeName))
+        || versionTags(a).join(' ').localeCompare(versionTags(b).join(' '));
   });
 }
 
@@ -776,10 +798,20 @@ function getVendors(cpes) {
 function getProducts(cpes, vendor) {
   const map = new Map();
   for (const c of cpes) {
-    if (c.vendor === vendor) map.set(c.product, (map.get(c.product) || 0) + 1);
+    if (c.vendor !== vendor) continue;
+    if (!map.has(c.product)) map.set(c.product, []);
+    map.get(c.product).push(c);
   }
   return [...map.entries()]
-    .map(([product, count]) => ({ product, count }))
+    .map(([product, list]) => {
+      // Variant (sw_edition / target_sw / target_hw) shared by every CPE of the product, if any.
+      // Distinct variant tuples (sw_edition / target_sw / target_hw) across the product's CPEs,
+      // most common first. The empty tuple is kept and rendered as "*", the value those CPEs carry.
+      const counts = new Map();
+      for (const c of list) { const k = versionTags(c).join(' '); counts.set(k, (counts.get(k) ?? 0) + 1); }
+      const variants = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k || '*');
+      return { product, count: list.length, variants: variants.length === 1 && variants[0] === '*' ? [] : variants };
+    })
     .sort((a, b) => a.product.localeCompare(b.product));
 }
 
@@ -812,22 +844,46 @@ function renderProducts() {
     return;
   }
   renderColumn(productList, productN, getProducts(S.filtered, S.selectedVendor),
-    p => `<div class="col-item${S.selectedProduct === p.product ? ' selected' : ''}" data-p="${esc(p.product)}">
-            <span class="item-name">${esc(p.product)}</span>
+    p => `<div class="col-item${p.variants.length > 1 ? ' two-line' : ''}${S.selectedProduct === p.product ? ' selected' : ''}" data-p="${esc(p.product)}">
+            ${p.variants.length > 1
+              ? `<span class="item-text">
+                   <span class="item-name">${esc(p.product)}</span>
+                   <span class="item-tags">${p.variants.map(t => `<span class="dep-tag">${esc(t)}</span>`).join('')}</span>
+                 </span>`
+              : `<span class="item-name">${esc(p.product)}</span>
+                 ${p.variants.map(t => `<span class="dep-tag">${esc(t)}</span>`).join('')}`}
             <span class="item-n">${p.count}</span>
           </div>`,
     'No products found');
+}
+
+// Variant chips (sw_edition / target_sw / target_hw) for the version list. Only shown when the
+// product's CPEs are split across variants, so the split itself is visible and filterable.
+function renderVariantBar(cpes) {
+  const counts = new Map();
+  for (const c of cpes) { const k = versionTags(c).join(' '); counts.set(k, (counts.get(k) ?? 0) + 1); }
+  const variants = [...counts.entries()].filter(([k]) => k !== '').sort((a, b) => b[1] - a[1]);
+  if (!variants.length || counts.size < 2) { variantBar.hidden = true; variantBar.innerHTML = ''; return; }
+  const chip = (key, label, n) => `<button class="chip${S.variant === key ? ' active' : ''}" data-variant="${esc(key ?? '')}">
+      <svg class="ic ic-18 chip-check"><use href="#ic-check"/></svg>${esc(label)}<span class="chip-n">${n}</span></button>`;
+  variantBar.innerHTML = chip(null, 'All', cpes.length) + variants.map(([k, n]) => chip(k, k, n)).join('');
+  variantBar.hidden = false;
 }
 
 function renderVersions() {
   if (!S.selectedVendor || !S.selectedProduct) {
     versionList.innerHTML = '<div class="col-placeholder">Select a product</div>';
     versionN.textContent = '';
+    variantBar.hidden = true; variantBar.innerHTML = '';
     return;
   }
-  renderColumn(versionList, versionN, getVersions(S.filtered, S.selectedVendor, S.selectedProduct),
+  const all = getVersions(S.filtered, S.selectedVendor, S.selectedProduct);
+  renderVariantBar(all);
+  const shown = S.variant === null ? all : all.filter(c => versionTags(c).join(' ') === S.variant);
+  renderColumn(versionList, versionN, shown,
     c => `<div class="col-item${S.selectedCpe?.cpeName === c.cpeName ? ' selected' : ''}" data-cpe="${esc(c.cpeName)}">
             <span class="item-name ver-name">${esc(versionLabel(c))}</span>
+            ${versionTags(c).map(t => `<span class="dep-tag">${esc(t)}</span>`).join('')}
             ${c.deprecated ? '<span class="dep-tag">deprecated</span>' : ''}
             <svg class="ic ic-20 ver-arrow"><use href="#ic-chevron"/></svg>
           </div>`,
@@ -938,7 +994,7 @@ function selectVendor(vendor) {
 }
 
 function selectProduct(product) {
-  S.selectedProduct = product; S.selectedCpe = null;
+  S.selectedProduct = product; S.selectedCpe = null; S.variant = null;
   cveSectionEl.hidden = true;
   renderProducts(); renderVersions();
 }
@@ -946,7 +1002,7 @@ function selectProduct(product) {
 function selectVersion(cpe) {
   S.selectedCpe = cpe;
   renderVersions();
-  loadCves(cpe.cpeName);
+  loadCves(cpe);
 }
 
 function autoAdvance() {
@@ -956,7 +1012,7 @@ function autoAdvance() {
   renderVendors();
   const products = getProducts(S.filtered, S.selectedVendor);
   if (products.length !== 1) { renderProducts(); renderVersions(); return; }
-  S.selectedProduct = products[0].product;
+  S.selectedProduct = products[0].product; S.variant = null;
   renderProducts(); renderVersions();
 }
 
@@ -993,9 +1049,11 @@ async function doSearch(q) {
   }
 }
 
-async function loadCves(cpeName) {
+async function loadCves(cpe) {
+  const cpeName = cpe.cpeName;
   cveSectionEl.hidden = false;
   cpeLbl.textContent  = cpeName;
+  cpeTitle.textContent = cpe.title !== cpeName ? cpe.title : '';
   nvdLink.href = `https://nvd.nist.gov/vuln/search?cpeFilterMode=cpe&cpeName=${cpeName}&resultType=records`;
   cveCnt.textContent = ''; sevStats.innerHTML = '';
   cveTbody.innerHTML = '<tr class="state-row"><td colspan="7"><span class="spinner"></span>Loading CVEs…</td></tr>';
@@ -1067,6 +1125,11 @@ function init() {
   // Column clicks (delegated)
   vendorList.addEventListener('click',  e => { const el = e.target.closest('.col-item'); if (el) selectVendor(el.dataset.v); });
   productList.addEventListener('click', e => { const el = e.target.closest('.col-item'); if (el) selectProduct(el.dataset.p); });
+  variantBar.addEventListener('click', e => {
+    const el = e.target.closest('.chip'); if (!el) return;
+    S.variant = el.dataset.variant === '' ? null : el.dataset.variant;
+    renderVersions();
+  });
   versionList.addEventListener('click', e => {
     const el = e.target.closest('.col-item');
     if (!el) return;

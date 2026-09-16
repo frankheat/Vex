@@ -22,6 +22,15 @@ The NVD API allows 5 requests / 30 s ([details](https://nvd.nist.gov/developers/
 
 NVD API keys raise the limit to 50 requests / 30 s, but they cannot be used here: the NVD server rejects the CORS preflight triggered by the `apiKey` header, so keyed requests never work from browser-side JavaScript.
 
+## CPE variants
+
+NVD often publishes several CPEs for the same version that differ only in `sw_edition`, `target_sw` or `target_hw` (e.g. `splunk:splunk` comes in enterprise, light and unqualified editions; Windows builds come per architecture). Vex surfaces this in two places:
+
+- **Product list**: each product shows the variants its CPEs come in, as labels next to the name. `*` stands for CPEs whose variant fields are unset. A single label means every CPE of that product carries that variant.
+- **Version list**: when a product has more than one variant, a row of filter chips (`All · enterprise 243 · light 49`) lets you narrow the list; each version row also carries its own variant label, so identical version numbers stay distinguishable.
+
+The **Selected CPE** bar shows the NVD title of the chosen CPE next to its name.
+
 ## CVSS scoring
 
 A CVE can carry several CVSS scores (NVD, the CNA that published it, ADPs) across different CVSS versions, and they often disagree, sometimes by several severity levels. Scores from different CVSS versions are on different scales and cannot be compared, so Vex handles the two dimensions separately:
