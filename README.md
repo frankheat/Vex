@@ -8,7 +8,10 @@ Navigate from vendor → product → version to find the exact CPE you need, the
   <img src="docs/logo.png" width="200" />
 </p>
 
-![Vex screenshot](docs/screenshot.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img alt="Vex screenshot" src="docs/screenshot.png">
+</picture>
 
 ---
 
